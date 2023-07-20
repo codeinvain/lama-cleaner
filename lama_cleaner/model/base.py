@@ -6,11 +6,17 @@ import torch
 import numpy as np
 from loguru import logger
 
-from lama_cleaner.helper import boxes_from_mask, resize_max_size, pad_img_to_modulo
+from lama_cleaner.helper import (
+    boxes_from_mask,
+    resize_max_size,
+    pad_img_to_modulo,
+    switch_mps_device,
+)
 from lama_cleaner.schema import Config, HDStrategy
 
 
 class InpaintModel:
+    name = "base"
     min_size: Optional[int] = None
     pad_mod = 8
     pad_to_square = False
@@ -21,6 +27,7 @@ class InpaintModel:
         Args:
             device:
         """
+        device = switch_mps_device(self.name, device)
         self.device = device
         self.init_model(device, **kwargs)
 
@@ -197,7 +204,9 @@ class InpaintModel:
 
             # only calculate histograms for non-masked parts
             source_histogram, _ = np.histogram(source_channel[mask == 0], 256, [0, 256])
-            reference_histogram, _ = np.histogram(reference_channel[mask == 0], 256, [0, 256])
+            reference_histogram, _ = np.histogram(
+                reference_channel[mask == 0], 256, [0, 256]
+            )
 
             source_cdf = self._calculate_cdf(source_histogram)
             reference_cdf = self._calculate_cdf(reference_histogram)
@@ -245,3 +254,45 @@ class InpaintModel:
         crop_img, crop_mask, [l, t, r, b] = self._crop_box(image, mask, box, config)
 
         return self._pad_forward(crop_img, crop_mask, config), [l, t, r, b]
+
+
+class DiffusionInpaintModel(InpaintModel):
+    @torch.no_grad()
+    def __call__(self, image, mask, config: Config):
+        """
+        images: [H, W, C] RGB, not normalized
+        masks: [H, W]
+        return: BGR IMAGE
+        """
+        # boxes = boxes_from_mask(mask)
+        if config.use_croper:
+            crop_img, crop_mask, (l, t, r, b) = self._apply_cropper(image, mask, config)
+            crop_image = self._scaled_pad_forward(crop_img, crop_mask, config)
+            inpaint_result = image[:, :, ::-1]
+            inpaint_result[t:b, l:r, :] = crop_image
+        else:
+            inpaint_result = self._scaled_pad_forward(image, mask, config)
+
+        return inpaint_result
+
+    def _scaled_pad_forward(self, image, mask, config: Config):
+        longer_side_length = int(config.sd_scale * max(image.shape[:2]))
+        origin_size = image.shape[:2]
+        downsize_image = resize_max_size(image, size_limit=longer_side_length)
+        downsize_mask = resize_max_size(mask, size_limit=longer_side_length)
+        if config.sd_scale != 1:
+            logger.info(
+                f"Resize image to do sd inpainting: {image.shape} -> {downsize_image.shape}"
+            )
+        inpaint_result = self._pad_forward(downsize_image, downsize_mask, config)
+        # only paste masked area result
+        inpaint_result = cv2.resize(
+            inpaint_result,
+            (origin_size[1], origin_size[0]),
+            interpolation=cv2.INTER_CUBIC,
+        )
+        original_pixel_indices = mask < 127
+        inpaint_result[original_pixel_indices] = image[:, :, ::-1][
+            original_pixel_indices
+        ]
+        return inpaint_result

@@ -12,6 +12,11 @@ export interface PaintByExampleEventData {
   image: File
 }
 
+export const RERUN_LAST_MASK = 'rerun_last_mask'
+
+export const DREAM_BUTTON_MOUSE_ENTER = 'dream_button_mouse_enter'
+export const DREAM_BUTTON_MOUSE_LEAVE = 'dream_btoon_mouse_leave'
+
 const emitter = mitt()
 
 export default emitter

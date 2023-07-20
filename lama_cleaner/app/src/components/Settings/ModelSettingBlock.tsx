@@ -1,11 +1,9 @@
 import React, { ReactNode, useEffect, useState } from 'react'
 import { useRecoilState, useRecoilValue } from 'recoil'
-import { getIsDisableModelSwitch } from '../../adapters/inpainting'
 import {
   AIModel,
   CV2Flag,
   isDisableModelSwitchState,
-  SDSampler,
   settingState,
 } from '../../store/Atoms'
 import Selector from '../shared/Selector'
@@ -179,28 +177,16 @@ function ModelSettingBlock() {
 
   const renderOptionDesc = (): ReactNode => {
     switch (setting.model) {
-      case AIModel.LAMA:
-        return undefined
       case AIModel.LDM:
         return renderLDMModelDesc()
       case AIModel.ZITS:
         return renderZITSModelDesc()
-      case AIModel.MAT:
-        return undefined
       case AIModel.FCF:
         return renderFCFModelDesc()
-      case AIModel.SD15:
-        return undefined
-      case AIModel.SD2:
-        return undefined
-      case AIModel.PAINT_BY_EXAMPLE:
-        return undefined
-      case AIModel.Mange:
-        return undefined
       case AIModel.CV2:
         return renderOpenCV2Desc()
       default:
-        return <></>
+        return undefined
     }
   }
 
@@ -242,6 +228,18 @@ function ModelSettingBlock() {
           'https://ommer-lab.com/research/latent-diffusion-models/',
           'https://github.com/CompVis/stable-diffusion'
         )
+      case AIModel.ANYTHING4:
+        return renderModelDesc(
+          'andite/anything-v4.0',
+          'https://huggingface.co/andite/anything-v4.0',
+          'https://huggingface.co/andite/anything-v4.0'
+        )
+      case AIModel.REALISTIC_VISION_1_4:
+        return renderModelDesc(
+          'SG161222/Realistic_Vision_V1.4',
+          'https://huggingface.co/SG161222/Realistic_Vision_V1.4',
+          'https://huggingface.co/SG161222/Realistic_Vision_V1.4'
+        )
       case AIModel.SD2:
         return renderModelDesc(
           'Stable Diffusion 2',
@@ -265,6 +263,12 @@ function ModelSettingBlock() {
           'Paint by Example',
           'https://arxiv.org/abs/2211.13227',
           'https://github.com/Fantasy-Studio/Paint-by-Example'
+        )
+      case AIModel.PIX2PIX:
+        return renderModelDesc(
+          'InstructPix2Pix',
+          'https://arxiv.org/abs/2211.09800',
+          'https://github.com/timothybrooks/instruct-pix2pix'
         )
       default:
         return <></>

@@ -1,5 +1,6 @@
-import { Rect, Settings } from '../store/Atoms'
-import { dataURItoBlob, srcToFile } from '../utils'
+import { PluginName } from '../components/Plugins/Plugins'
+import { ControlNetMethodMap, Rect, Settings } from '../store/Atoms'
+import { dataURItoBlob, loadImage, srcToFile } from '../utils'
 
 export const API_ENDPOINT = `${process.env.REACT_APP_INPAINTING_URL}`
 
@@ -9,7 +10,6 @@ export default async function inpaint(
   croperRect: Rect,
   prompt?: string,
   negativePrompt?: string,
-  sizeLimit?: string,
   seed?: number,
   maskBase64?: string,
   customMask?: File,
@@ -82,11 +82,20 @@ export default async function inpaint(
     fd.append('paintByExampleImage', paintByExampleImage)
   }
 
-  if (sizeLimit === undefined) {
-    fd.append('sizeLimit', '1080')
-  } else {
-    fd.append('sizeLimit', sizeLimit)
-  }
+  // InstructPix2Pix
+  fd.append('p2pSteps', settings.p2pSteps.toString())
+  fd.append('p2pImageGuidanceScale', settings.p2pImageGuidanceScale.toString())
+  fd.append('p2pGuidanceScale', settings.p2pGuidanceScale.toString())
+
+  // ControlNet
+  fd.append(
+    'controlnet_conditioning_scale',
+    settings.controlnetConditioningScale.toString()
+  )
+  fd.append(
+    'controlnet_method',
+    ControlNetMethodMap[settings.controlnetMethod.toString()]
+  )
 
   try {
     const res = await fetch(`${API_ENDPOINT}/inpaint`, {
@@ -105,14 +114,8 @@ export default async function inpaint(
   }
 }
 
-export function getIsDisableModelSwitch() {
-  return fetch(`${API_ENDPOINT}/is_disable_model_switch`, {
-    method: 'GET',
-  })
-}
-
-export function getEnableFileManager() {
-  return fetch(`${API_ENDPOINT}/is_enable_file_manager`, {
+export function getServerConfig() {
+  return fetch(`${API_ENDPOINT}/server_config`, {
     method: 'GET',
   })
 }
@@ -144,20 +147,28 @@ export function modelDownloaded(name: string) {
   })
 }
 
-export async function postInteractiveSeg(
+export async function runPlugin(
+  name: string,
   imageFile: File,
-  maskFile: File | null,
-  clicks: number[][]
+  upscale?: number,
+  maskFile?: File | null,
+  clicks?: number[][]
 ) {
   const fd = new FormData()
+  fd.append('name', name)
   fd.append('image', imageFile)
-  fd.append('clicks', JSON.stringify(clicks))
-  if (maskFile !== null) {
+  if (upscale) {
+    fd.append('upscale', upscale.toString())
+  }
+  if (clicks) {
+    fd.append('clicks', JSON.stringify(clicks))
+  }
+  if (maskFile) {
     fd.append('mask', maskFile)
   }
 
   try {
-    const res = await fetch(`${API_ENDPOINT}/interactive_seg`, {
+    const res = await fetch(`${API_ENDPOINT}/run_plugin`, {
       method: 'POST',
       body: fd,
     })
@@ -219,6 +230,38 @@ export async function downloadToOutput(
       const errMsg = await res.text()
       throw new Error(errMsg)
     }
+  } catch (error) {
+    throw new Error(`Something went wrong: ${error}`)
+  }
+}
+
+export async function makeGif(
+  originFile: File,
+  cleanImage: HTMLImageElement,
+  filename: string,
+  mimeType: string
+) {
+  const cleanFile = await srcToFile(cleanImage.src, filename, mimeType)
+  const fd = new FormData()
+  fd.append('name', PluginName.MakeGIF)
+  fd.append('image', originFile)
+  fd.append('clean_img', cleanFile)
+  fd.append('filename', filename)
+
+  try {
+    const res = await fetch(`${API_ENDPOINT}/run_plugin`, {
+      method: 'POST',
+      body: fd,
+    })
+    if (!res.ok) {
+      const errMsg = await res.text()
+      throw new Error(errMsg)
+    }
+
+    const blob = await res.blob()
+    const newImage = new Image()
+    await loadImage(newImage, URL.createObjectURL(blob))
+    return newImage
   } catch (error) {
     throw new Error(`Something went wrong: ${error}`)
   }
